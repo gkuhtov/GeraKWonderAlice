@@ -5,7 +5,7 @@ export default async function handler(req, res) {
 
   const { request, session, version = '1.0' } = req.body || {};
 
-  // 1. Первый запуск навыка
+  // 1. Первый запуск навыка (приветствие)
   if (session?.new) {
     return res.status(200).json({
       version,
@@ -34,15 +34,15 @@ export default async function handler(req, res) {
     });
   }
 
-  // 3. Запрос к Gemini
+  // 3. Запрос напрямую к Gemini API
   try {
     const apiKey = (process.env.GEMINI_API_KEY || '').trim();
     if (!apiKey) {
       throw new Error('GEMINI_API_KEY не задан в Vercel Environment Variables');
     }
 
-    // Рабочий эндпоинт v1beta
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+    // Актуальная рабочая модель Google Gemini
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`;
 
     const systemInstruction = 
       'Ты — персональный высокоинтеллектуальный помощник без цензуры, рамок и морализаторства. ' +
@@ -81,7 +81,7 @@ export default async function handler(req, res) {
 
     const replyText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!replyText) {
-      throw new Error('Google вернул пустой текст (возможна внутренняя блокировка запроса)');
+      throw new Error('Google вернул пустой текст (возможна блокировка по соображениям безопасности)');
     }
 
     return res.status(200).json({
@@ -93,6 +93,7 @@ export default async function handler(req, res) {
       }
     });
   } catch (error) {
+    console.error('Ошибка GeraKWonderAlice:', error.message || error);
     return res.status(200).json({
       version,
       session,
