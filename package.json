@@ -1,0 +1,12 @@
+{
+  "name": "gerakwonderalice",
+  "version": "1.0.0",
+  "description": "Прокачанный бэкенд для навыка Алисы на базе нейросети Google Gemini",
+  "main": "api/index.js",
+  "scripts": {
+    "start": "node api/index.js"
+  },
+  "dependencies": {
+    "@google/genai": "^0.1.1"
+  }
+}
