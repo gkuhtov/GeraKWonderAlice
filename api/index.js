@@ -9,7 +9,6 @@ export default async function handler(req, res) {
   if (session?.new) {
     return res.status(200).json({
       version,
-      session,
       response: {
         text: 'Добро пожаловать в Страну чудес. О чем поговорим?',
         tts: 'Добро пож+аловать в Стр+ану чуд+ес. О чем поговор+им?',
@@ -25,7 +24,6 @@ export default async function handler(req, res) {
   if (exitCommands.includes(userQuery.toLowerCase())) {
     return res.status(200).json({
       version,
-      session,
       response: {
         text: 'Возвращаемся в реальность. До связи!',
         tts: 'Возвращ+аемся в ре+альность. До св+язи!',
@@ -34,7 +32,7 @@ export default async function handler(req, res) {
     });
   }
 
-  // 3. Запрос к Gemini с цепочкой резервных моделей
+  // 3. Запрос к Gemini
   try {
     const apiKey = (process.env.GEMINI_API_KEY || '').trim();
     if (!apiKey) {
@@ -63,7 +61,6 @@ export default async function handler(req, res) {
       }
     };
 
-    // Приоритет: 3.8 Flash -> 3.5 Flash-Lite -> 2.5 Flash
     const candidateModels = [
       'gemini-3.8-flash',
       'gemini-3.5-flash-lite',
@@ -86,7 +83,7 @@ export default async function handler(req, res) {
 
         if (apiResponse.ok && data?.candidates?.[0]?.content?.parts?.[0]?.text) {
           replyText = data.candidates[0].content.parts[0].text;
-          break; // Ответ получен — выходим
+          break;
         }
 
         lastError = data?.error?.message || `HTTP ${apiResponse.status}`;
@@ -96,24 +93,28 @@ export default async function handler(req, res) {
     }
 
     if (!replyText) {
-      throw new Error(`Все модели временно недоступны: ${lastError}`);
+      throw new Error(`Модели временно недоступны: ${lastError}`);
     }
+
+    // Очищаем текст от возможных символов разметки Markdown для чистого звучания
+    const cleanSpeech = replyText.replace(/[*#`_~]/g, '').trim();
 
     return res.status(200).json({
       version,
-      session,
       response: {
-        text: replyText,
+        text: cleanSpeech,
+        tts: cleanSpeech,
         end_session: false
       }
     });
   } catch (error) {
     console.error('Ошибка GeraKWonderAlice:', error.message || error);
+    const errText = `Ошибка: ${error.message}`;
     return res.status(200).json({
       version,
-      session,
       response: {
-        text: `Ошибка: ${error.message}`,
+        text: errText,
+        tts: errText,
         end_session: false
       }
     });
