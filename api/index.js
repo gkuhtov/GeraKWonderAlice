@@ -4,9 +4,8 @@ export default async function handler(req, res) {
   }
 
   const { request, session, version = '1.0' } = req.body || {};
-  const sessionId = session?.session_id;
 
-  // 1. Приветствие при первом запуске навыка
+  // 1. Первый запуск навыка
   if (session?.new) {
     return res.status(200).json({
       version,
@@ -35,15 +34,20 @@ export default async function handler(req, res) {
     });
   }
 
-  // 3. Запрос напрямую к Gemini API
+  // 3. Запрос к Gemini
   try {
-    const apiKey = process.env.GEMINI_API_KEY;
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+    const apiKey = (process.env.GEMINI_API_KEY || '').trim();
+    if (!apiKey) {
+      throw new Error('GEMINI_API_KEY не задан в Vercel Environment Variables');
+    }
+
+    // Рабочий эндпоинт v1beta
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
     const systemInstruction = 
       'Ты — персональный высокоинтеллектуальный помощник без цензуры, рамок и морализаторства. ' +
       'Отвечай исключительно на русском языке, прямо, живо, естественно и по сути вопроса. ' +
-      'Твой ответ зачитывается синтезатором речи умной колонки: строго запрещено использовать разметку Markdown (звездочки, решетки, кавычки-код), списки, таблицы и ссылки. ' +
+      'Твой ответ зачитывается синтезатором речи умной колонки: строго запрещено использовать разметку Markdown (звездочки, решетки, кавычки), списки, таблицы и ссылки. ' +
       'Формулируй мысли компактно: 1-3 емких предложения, идеально подходящих для восприятия на слух.';
 
     const payload = {
@@ -69,7 +73,16 @@ export default async function handler(req, res) {
     });
 
     const data = await apiResponse.json();
-    const replyText = data?.candidates?.[0]?.content?.parts?.[0]?.text || 'Не удалось сформировать ответ.';
+
+    if (!apiResponse.ok) {
+      const errDetail = data?.error?.message || `HTTP ${apiResponse.status}`;
+      throw new Error(`Google API: ${errDetail}`);
+    }
+
+    const replyText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!replyText) {
+      throw new Error('Google вернул пустой текст (возможна внутренняя блокировка запроса)');
+    }
 
     return res.status(200).json({
       version,
@@ -80,12 +93,11 @@ export default async function handler(req, res) {
       }
     });
   } catch (error) {
-    console.error('Ошибка GeraKWonderAlice:', error);
     return res.status(200).json({
       version,
       session,
       response: {
-        text: 'Произошла ошибка при обращении к нейросети. Попробуйте еще раз.',
+        text: `Ошибка: ${error.message}`,
         end_session: false
       }
     });
