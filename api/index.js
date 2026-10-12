@@ -1,4 +1,4 @@
-const MODELS_TO_TRY = ["gemini-3.8-flash", "gemini-2.5-flash", "gemini-1.5-flash"];
+const MODELS_TO_TRY = ["gemini-3.8-flash", "gemini-3-flash", "gemini-3-flash-preview"];
 const MAX_HISTORY_MESSAGES = 6;
 const MAX_HISTORY_MESSAGE_CHARS = 800;
 const MAX_ALICE_TEXT = 1024;
