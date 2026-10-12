@@ -6,8 +6,7 @@ const MODELS_TO_TRY = [
 
 const MAX_HISTORY_MESSAGES = 6;
 const MAX_HISTORY_MESSAGE_CHARS = 800;
-const MAX_ALICE_TEXT = 1024;
-const TOTAL_BUDGET_MS = 4400;
+const TOTAL_BUDGET_MS = 4300;
 
 const SYSTEM_PROMPT = [
   "Ты — дерзкий, прошаренный, ровный пацанчик с района, который застрял в колонке.",
@@ -20,25 +19,22 @@ const SYSTEM_PROMPT = [
 ].join(" ");
 
 function fitAliceText(value) {
-  const text = String(value ?? "")
+  return String(value ?? "")
     .replace(/[\r\n\t]+/g, " ")
+    .replace(/[^\p{L}\p{N}\s.,!?:;—–\-]/gu, "") // удаляем кракозябры, кавычки и смайлы, ломающие TTS колонки
     .replace(/\s{2,}/g, " ")
-    .trim();
-
-  if (text.length <= MAX_ALICE_TEXT) return text || "Не удалось подготовить ответ.";
-  const candidate = text.slice(0, MAX_ALICE_TEXT - 1);
-  const sentenceEnd = Math.max(candidate.lastIndexOf(". "), candidate.lastIndexOf("! "), candidate.lastIndexOf("? "));
-  if (sentenceEnd >= 200) return candidate.slice(0, sentenceEnd + 1).trim();
-  const lastSpace = candidate.lastIndexOf(" ");
-  return (lastSpace > 150 ? candidate.slice(0, lastSpace) : candidate).trim() + "…";
+    .trim()
+    .slice(0, 950);
 }
 
 function aliceResponse(text, endSession = false, history = []) {
+  const clean = fitAliceText(text) || "Базара ноль, я на связи.";
   return {
     version: "1.0",
     response: {
-      text: fitAliceText(text),
-      end_session: endSession
+      text: clean,
+      tts: clean, // обязательно для физических Станций
+      end_session: Boolean(endSession)
     },
     session_state: { history }
   };
@@ -201,6 +197,7 @@ export default async function handler(req, res) {
     const command = String(body?.request?.command || body?.request?.original_utterance || "").trim();
     const oldHistory = safeHistory(body?.state?.session?.history);
 
+    // Приветствие при старте сессии на колонке
     if (isNew || !command) {
       return sendJson(res, 200, aliceResponse(
         "Здорово, братуха. Че как сам? Спрашивай че надо, по фактам раскидаю.",
