@@ -110,8 +110,7 @@ async function requestSingleModel(model, text, history, searchContext, key, time
         contents,
         generationConfig: {
           temperature: 0.3,
-          maxOutputTokens: 180,
-          thinkingConfig: { thinkingBudget: 0 }
+          maxOutputTokens: 180
         }
       }),
       signal: controller.signal
