@@ -1,10 +1,10 @@
-const DEFAULT_MODEL = "gemini-2.5-flash";
+const DEFAULT_MODEL = "gemini-2.0-flash";
 const MAX_HISTORY_MESSAGES = 8;
 const MAX_HISTORY_MESSAGE_CHARS = 1200;
 const MAX_ALICE_TEXT = 1024;
-const TOTAL_RESPONSE_BUDGET_MS = 3600;
-const SERPER_TIMEOUT_MS = 600;
-const GEMINI_TIMEOUT_MS = 2500;
+const TOTAL_RESPONSE_BUDGET_MS = 3800;
+const SERPER_TIMEOUT_MS = 700;
+const GEMINI_TIMEOUT_MS = 2800;
 
 const SYSTEM_PROMPT = [
   "Ты — полезный голосовой помощник в навыке Яндекс Алисы.",
@@ -100,15 +100,15 @@ async function searchWeb(query, timeoutMs) {
     const answerBox = data.answerBox?.answer || data.answerBox?.snippet;
     if (answerBox) items.unshift(`Краткий ответ поисковика: ${String(answerBox).slice(0, 350)}`);
     return items.length ? items.join("\n") : "";
-  } catch (error) {
+  } catch (_) {
     return "";
   }
 }
 
 async function askGemini(text, history, searchContext, timeoutMs) {
   const key = process.env.GEMINI_API_KEY;
-  if (!key) throw new Error("MISSING_GEMINI_KEY");
-  if (timeoutMs < 250) throw new Error("TIME_BUDGET_EXHAUSTED");
+  if (!key) throw new Error("Ключ GEMINI_API_KEY не задан в переменных окружения Vercel");
+  if (timeoutMs < 250) throw new Error("Недостаточно времени для обращения к Gemini (Timeout)");
 
   const model = String(process.env.GEMINI_MODEL || DEFAULT_MODEL).trim();
   const contents = safeHistory(history).map(item => ({
@@ -143,9 +143,8 @@ async function askGemini(text, history, searchContext, timeoutMs) {
 
   if (!response.ok) {
     const status = Number(response.status);
-    if (status === 401 || status === 403) throw new Error("GEMINI_KEY_REJECTED");
-    if (status === 429) throw new Error("GEMINI_QUOTA");
-    throw new Error("GEMINI_REQUEST_FAILED");
+    const apiError = data?.error?.message || response.statusText || "неизвестная ошибка";
+    throw new Error(`Google API вернул статус ${status}: ${apiError}`);
   }
 
   const candidate = data?.candidates?.[0];
@@ -154,24 +153,14 @@ async function askGemini(text, history, searchContext, timeoutMs) {
     .join("")
     .trim();
 
-  if (!answer) throw new Error("GEMINI_EMPTY_RESPONSE");
-  return answer;
-}
-
-function errorForUser(error) {
-  switch (error?.message) {
-    case "MISSING_GEMINI_KEY":
-      return "Проверьте переменную GEMINI_API_KEY в настройках Vercel.";
-    case "GEMINI_KEY_REJECTED":
-      return "Не удалось подключиться к Gemini. Проверьте API-ключ.";
-    case "GEMINI_QUOTA":
-      return "Превышен лимит запросов к Gemini. Попробуйте чуть позже.";
-    case "TIME_BUDGET_EXHAUSTED":
-    case "AbortError":
-      return "Не успела подготовить ответ. Спросите чуть короче.";
-    default:
-      return "Не удалось получить ответ от нейросети. Попробуйте еще раз.";
+  if (!answer) {
+    if (data?.promptFeedback?.blockReason) {
+      throw new Error(`Google заблокировал ответ по причине: ${data.promptFeedback.blockReason}`);
+    }
+    throw new Error("Google вернул пустой ответ");
   }
+
+  return answer;
 }
 
 async function parseBody(req) {
@@ -200,44 +189,4 @@ export default async function handler(req, res) {
   }
 
   const startedAt = Date.now();
-  const remainingMs = () => TOTAL_RESPONSE_BUDGET_MS - (Date.now() - startedAt);
-
-  const body = await parseBody(req);
-  const isNewSession = Boolean(body?.session?.new);
-  const text = String(body?.request?.command || body?.request?.original_utterance || "").trim();
-  const oldHistory = safeHistory(body?.state?.session?.history);
-
-  // Мгновенный ответ на открытие навыка
-  if (isNewSession || !text) {
-    return res.status(200).json(aliceResponse(
-      "Привет! Я могу ответить на любой вопрос или найти актуальную информацию. Что хочешь узнать?",
-      false,
-      oldHistory
-    ));
-  }
-
-  try {
-    let searchContext = "";
-    if (isSearchIntent(text) && process.env.SERPER_API_KEY) {
-      searchContext = await searchWeb(text, Math.min(SERPER_TIMEOUT_MS, Math.max(0, remainingMs() - 2600)));
-    }
-
-    const answer = await askGemini(
-      text,
-      oldHistory,
-      searchContext,
-      Math.max(0, Math.min(GEMINI_TIMEOUT_MS, remainingMs() - 600))
-    );
-
-    const history = [
-      ...oldHistory,
-      { role: "user", text: text.slice(0, MAX_HISTORY_MESSAGE_CHARS) },
-      { role: "model", text: answer.slice(0, MAX_HISTORY_MESSAGE_CHARS) }
-    ].slice(-MAX_HISTORY_MESSAGES);
-
-    return res.status(200).json(aliceResponse(answer, false, history));
-  } catch (error) {
-    const safeError = error?.message === "AbortError" ? "TIME_BUDGET_EXHAUSTED" : error;
-    return res.status(200).json(aliceResponse(errorForUser(safeError), false, oldHistory));
-  }
-}
+  const remainingMs
