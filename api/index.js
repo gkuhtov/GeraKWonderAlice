@@ -1,4 +1,9 @@
-const MODELS_TO_TRY = ["gemini-3.8-flash", "gemini-3-flash", "gemini-3-flash-preview"];
+const MODELS_TO_TRY = [
+  "gemini-3.8-flash",
+  "gemini-3.5-flash-lite",
+  "gemini-3.6-flash"
+];
+
 const MAX_HISTORY_MESSAGES = 6;
 const MAX_HISTORY_MESSAGE_CHARS = 800;
 const MAX_ALICE_TEXT = 1024;
@@ -161,7 +166,6 @@ export default async function handler(req, res) {
     const command = String(body?.request?.command || body?.request?.original_utterance || "").trim();
     const oldHistory = safeHistory(body?.state?.session?.history);
 
-    // Мгновенный ответ при первом запуске или пустом запросе
     if (isNew || !command) {
       return res.status(200).json(aliceResponse(
         "Привет! Я готова ответить на любой вопрос или найти информацию в сети. Что вас интересует?",
@@ -172,24 +176,4 @@ export default async function handler(req, res) {
 
     let searchContext = "";
     const isSearch = /погод|курс|новост|найди|сколько|сегодня|сейчас|кто так|что так/i.test(command);
-    if (isSearch && process.env.SERPER_API_KEY && timeLeft() > 2800) {
-      searchContext = await quickSearchWeb(command, 700);
-    }
-
-    const answer = await askGemini(command, oldHistory, searchContext, Math.max(1500, timeLeft() - 300));
-
-    const history = [
-      ...oldHistory,
-      { role: "user", text: command.slice(0, MAX_HISTORY_MESSAGE_CHARS) },
-      { role: "model", text: answer.slice(0, MAX_HISTORY_MESSAGE_CHARS) }
-    ].slice(-MAX_HISTORY_MESSAGES);
-
-    return res.status(200).json(aliceResponse(answer, false, history));
-  } catch (error) {
-    const elapsed = Date.now() - startTime;
-    const msg = error?.name === "AbortError"
-      ? `Таймаут (${elapsed}мс): сервер не успел обработать запрос.`
-      : `Ошибка (${elapsed}мс): ${error?.message || error}`;
-    return res.status(200).json(aliceResponse(msg, false, []));
-  }
-}
+    if (isSearch
