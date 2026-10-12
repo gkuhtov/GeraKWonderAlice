@@ -1,13 +1,13 @@
 const MODELS_TO_TRY = [
-  "gemini-3.8-flash",
   "gemini-3.5-flash-lite",
+  "gemini-3.8-flash",
   "gemini-3.6-flash"
 ];
 
 const MAX_HISTORY_MESSAGES = 6;
 const MAX_HISTORY_MESSAGE_CHARS = 800;
 const MAX_ALICE_TEXT = 1024;
-const TOTAL_BUDGET_MS = 4000;
+const TOTAL_BUDGET_MS = 4400;
 
 const SYSTEM_PROMPT = 
   "Ты — полезный голосовой помощник в Яндекс Алисе. Отвечай кратко, по-русски (1–3 предложения), без Markdown, списков и ссылок.";
@@ -57,7 +57,7 @@ function sendJson(res, statusCode, data) {
   res.end(jsonStr);
 }
 
-async function quickSearchWeb(query, timeoutMs = 700) {
+async function quickSearchWeb(query, timeoutMs = 600) {
   const key = process.env.SERPER_API_KEY;
   if (!key || timeoutMs < 200) return "";
 
@@ -110,7 +110,8 @@ async function requestSingleModel(model, text, history, searchContext, key, time
         contents,
         generationConfig: {
           temperature: 0.3,
-          maxOutputTokens: 200
+          maxOutputTokens: 180,
+          thinkingConfig: { thinkingBudget: 0 }
         }
       }),
       signal: controller.signal
@@ -144,7 +145,7 @@ async function askGemini(text, history, searchContext, totalTimeMs) {
 
   for (const model of models) {
     const remainingTime = deadline - Date.now();
-    if (remainingTime < 1000) break;
+    if (remainingTime < 800) break;
 
     try {
       return await requestSingleModel(model, text, history, searchContext, key, remainingTime);
@@ -194,7 +195,6 @@ export default async function handler(req, res) {
     const command = String(body?.request?.command || body?.request?.original_utterance || "").trim();
     const oldHistory = safeHistory(body?.state?.session?.history);
 
-    // Мгновенный ответ на старт сессии или пустое приветствие
     if (isNew || !command) {
       return sendJson(res, 200, aliceResponse(
         "Привет! Я готова ответить на любой вопрос или найти информацию в сети. Что вас интересует?",
@@ -206,10 +206,10 @@ export default async function handler(req, res) {
     let searchContext = "";
     const isSearch = /погод|курс|новост|найди|сколько|сегодня|сейчас|кто так|что так/i.test(command);
     if (isSearch && process.env.SERPER_API_KEY && timeLeft() > 2800) {
-      searchContext = await quickSearchWeb(command, 700);
+      searchContext = await quickSearchWeb(command, 600);
     }
 
-    const answer = await askGemini(command, oldHistory, searchContext, Math.max(1500, timeLeft() - 300));
+    const answer = await askGemini(command, oldHistory, searchContext, Math.max(1500, timeLeft() - 250));
 
     const history = [
       ...oldHistory,
