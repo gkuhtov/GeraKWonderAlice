@@ -21,7 +21,7 @@ const SYSTEM_PROMPT = [
 function fitAliceText(value) {
   return String(value ?? "")
     .replace(/[\r\n\t]+/g, " ")
-    .replace(/[^\p{L}\p{N}\s.,!?:;—–\-]/gu, "") // удаляем кракозябры, кавычки и смайлы, ломающие TTS колонки
+    .replace(/[^\p{L}\p{N}\s.,!?:;—–\-]/gu, "")
     .replace(/\s{2,}/g, " ")
     .trim()
     .slice(0, 950);
@@ -33,7 +33,7 @@ function aliceResponse(text, endSession = false, history = []) {
     version: "1.0",
     response: {
       text: clean,
-      tts: clean, // обязательно для физических Станций
+      tts: clean,
       end_session: Boolean(endSession)
     },
     session_state: { history }
@@ -197,7 +197,6 @@ export default async function handler(req, res) {
     const command = String(body?.request?.command || body?.request?.original_utterance || "").trim();
     const oldHistory = safeHistory(body?.state?.session?.history);
 
-    // Приветствие при старте сессии на колонке
     if (isNew || !command) {
       return sendJson(res, 200, aliceResponse(
         "Здорово, братуха. Че как сам? Спрашивай че надо, по фактам раскидаю.",
