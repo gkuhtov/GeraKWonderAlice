@@ -7,7 +7,7 @@ const MODELS_TO_TRY = [
 const MAX_HISTORY_MESSAGES = 6;
 const MAX_HISTORY_MESSAGE_CHARS = 800;
 const MAX_ALICE_TEXT = 1024;
-const TOTAL_BUDGET_MS = 4200;
+const TOTAL_BUDGET_MS = 4000;
 
 const SYSTEM_PROMPT = 
   "Ты — полезный голосовой помощник в Яндекс Алисе. Отвечай кратко, по-русски (1–3 предложения), без Markdown, списков и ссылок.";
@@ -43,6 +43,18 @@ function safeHistory(history) {
     .filter(item => item && (item.role === "user" || item.role === "model") && typeof item.text === "string")
     .slice(-MAX_HISTORY_MESSAGES)
     .map(item => ({ role: item.role, text: item.text.slice(0, MAX_HISTORY_MESSAGE_CHARS) }));
+}
+
+function sendJson(res, statusCode, data) {
+  const jsonStr = JSON.stringify(data);
+  if (typeof res.status === "function" && typeof res.json === "function") {
+    return res.status(statusCode).json(data);
+  }
+  res.writeHead(statusCode, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Content-Length": Buffer.byteLength(jsonStr)
+  });
+  res.end(jsonStr);
 }
 
 async function quickSearchWeb(query, timeoutMs = 700) {
@@ -148,26 +160,43 @@ async function askGemini(text, history, searchContext, totalTimeMs) {
   throw lastError || new Error("Не удалось получить ответ от моделей Gemini");
 }
 
+async function readBody(req) {
+  if (req.body && typeof req.body === "object") return req.body;
+  if (typeof req.body === "string" && req.body.trim()) {
+    try { return JSON.parse(req.body); } catch (_) {}
+  }
+  return new Promise((resolve) => {
+    let raw = "";
+    req.on("data", chunk => { raw += chunk; });
+    req.on("end", () => {
+      try { resolve(JSON.parse(raw)); } catch (_) { resolve({}); }
+    });
+    req.on("error", () => resolve({}));
+    setTimeout(() => resolve({}), 100);
+  });
+}
+
 export default async function handler(req, res) {
   if (req.method === "GET") {
-    return res.status(200).json({ ok: true, status: "ready" });
+    return sendJson(res, 200, { ok: true, status: "ready" });
   }
 
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return sendJson(res, 405, { error: "Method not allowed" });
   }
 
   const startTime = Date.now();
   const timeLeft = () => TOTAL_BUDGET_MS - (Date.now() - startTime);
 
   try {
-    const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {});
+    const body = await readBody(req);
     const isNew = Boolean(body?.session?.new);
     const command = String(body?.request?.command || body?.request?.original_utterance || "").trim();
     const oldHistory = safeHistory(body?.state?.session?.history);
 
+    // Мгновенный ответ на старт сессии или пустое приветствие
     if (isNew || !command) {
-      return res.status(200).json(aliceResponse(
+      return sendJson(res, 200, aliceResponse(
         "Привет! Я готова ответить на любой вопрос или найти информацию в сети. Что вас интересует?",
         false,
         oldHistory
@@ -176,4 +205,24 @@ export default async function handler(req, res) {
 
     let searchContext = "";
     const isSearch = /погод|курс|новост|найди|сколько|сегодня|сейчас|кто так|что так/i.test(command);
-    if (isSearch
+    if (isSearch && process.env.SERPER_API_KEY && timeLeft() > 2800) {
+      searchContext = await quickSearchWeb(command, 700);
+    }
+
+    const answer = await askGemini(command, oldHistory, searchContext, Math.max(1500, timeLeft() - 300));
+
+    const history = [
+      ...oldHistory,
+      { role: "user", text: command.slice(0, MAX_HISTORY_MESSAGE_CHARS) },
+      { role: "model", text: answer.slice(0, MAX_HISTORY_MESSAGE_CHARS) }
+    ].slice(-MAX_HISTORY_MESSAGES);
+
+    return sendJson(res, 200, aliceResponse(answer, false, history));
+  } catch (error) {
+    const elapsed = Date.now() - startTime;
+    const msg = error?.name === "AbortError"
+      ? `Таймаут (${elapsed}мс): сервер не успел обработать запрос.`
+      : `Ошибка (${elapsed}мс): ${error?.message || error}`;
+    return sendJson(res, 200, aliceResponse(msg, false, []));
+  }
+}
