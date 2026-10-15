@@ -47,14 +47,22 @@ const SYSTEM_PROMPT = [
 ].join(" ");
 
 function fitAliceText(value) {
-  return String(value ?? "")
-    .replace(/[\r\n\t]+/g, " ")
-    .replace(/[^\p{L}\p{N}\s.,!?:;—–\-]/gu, "")
-    .replace(/\s{2,}/g, " ")
-    .trim()
-    .slice(0, 950);
+  const clean = String(value ?? "")
+    .replace(/[\\r\\n\\t]+/g, " ")
+    .replace(/[^\\p{L}\\p{N}\\s.,!?:;—–\\-]/gu, "")
+    .replace(/\\s{2,}/g, " ")
+    .trim();
+
+  if (clean.length <= 950) return clean;
+
+  const clipped = clean.slice(0, 950);
+  const boundary = Math.max(clipped.lastIndexOf("."), clipped.lastIndexOf("!"), clipped.lastIndexOf("?"));
+  return (boundary >= 570 ? clipped.slice(0, boundary + 1) : clipped).trim();
 }
 
+function isSearchIntent(value) {
+  return /погод|курс|новост|найди|сколько|сегодня|сейчас|кто так|что так|weather|exchange rate|latest news|news|today|current|search|find/i.test(String(value || ""));
+}
 function aliceResponse(text, endSession = false, history = []) {
   const clean = fitAliceText(text) || "Базара ноль, я на связи.";
   return {
