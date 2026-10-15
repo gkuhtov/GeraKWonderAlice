@@ -6,6 +6,7 @@ const MODELS_TO_TRY = [
 
 const MAX_HISTORY_MESSAGES = 6;
 const MAX_HISTORY_MESSAGE_CHARS = 800;
+const MAX_COMMAND_CHARS = 1200;
 const TOTAL_BUDGET_MS = 4300;
 
 const SYSTEM_PROMPT = [
@@ -196,6 +197,14 @@ export default async function handler(req, res) {
     const isNew = Boolean(body?.session?.new);
     const command = String(body?.request?.command || body?.request?.original_utterance || "").trim();
     const oldHistory = safeHistory(body?.state?.session?.history);
+
+    if (command.length > MAX_COMMAND_CHARS) {
+      return sendJson(res, 200, aliceResponse(
+        "Братуха, сообщение слишком длинное. Сократи до 1200 символов и отправляй заново.",
+        false,
+        oldHistory
+      ));
+    }
 
     if (isNew || !command) {
       return sendJson(res, 200, aliceResponse(
