@@ -4,7 +4,7 @@ const MODELS_TO_TRY = [
   "gemini-3.6-flash"
 ];
 
-const MAX_HISTORY_MESSAGES = 6;
+const MAX_HISTORY_MESSAGES = 8;
 const MAX_HISTORY_MESSAGE_CHARS = 800;
 const MAX_COMMAND_CHARS = 1200;
 const RATE_LIMIT_WINDOW_MS = 60_000;
@@ -209,7 +209,7 @@ async function readBody(req) {
 
 export default async function handler(req, res) {
   if (req.method === "GET") {
-    return sendJson(res, 200, { ok: true, status: "ready" });
+    return sendJson(res, 200, { ok: true, status: "ready", service: "alice-gemini-serper" });
   }
 
   if (req.method !== "POST") {
@@ -239,14 +239,14 @@ export default async function handler(req, res) {
 
     if (isNew || !command) {
       return sendJson(res, 200, aliceResponse(
-        "Здорово, братуха. Че как сам? Спрашивай че надо, по фактам раскидаю.",
+        "Привет, братуха. Че как сам? Спрашивай че надо, по фактам раскидаю.",
         false,
         oldHistory
       ));
     }
 
     let searchContext = "";
-    const isSearch = /погод|курс|новост|найди|сколько|сегодня|сейчас|кто так|что так/i.test(command);
+    const isSearch = isSearchIntent(command);
     if (isSearch && process.env.SERPER_API_KEY && timeLeft() > 2800) {
       searchContext = await quickSearchWeb(command, 600);
     }
@@ -268,3 +268,5 @@ export default async function handler(req, res) {
     return sendJson(res, 200, aliceResponse(msg, false, []));
   }
 }
+
+export { aliceResponse, fitAliceText, isSearchIntent, safeHistory };
