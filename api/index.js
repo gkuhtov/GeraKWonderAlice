@@ -48,9 +48,9 @@ const SYSTEM_PROMPT = [
 
 function fitAliceText(value) {
   const clean = String(value ?? "")
-    .replace(/[\\r\\n\\t]+/g, " ")
-    .replace(/[^\\p{L}\\p{N}\\s.,!?:;—–\\-]/gu, "")
-    .replace(/\\s{2,}/g, " ")
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/[^\p{L}\p{N}\s.,!?:;—–\-]/gu, "")
+    .replace(/\s{2,}/g, " ")
     .trim();
 
   if (clean.length <= 950) return clean;
