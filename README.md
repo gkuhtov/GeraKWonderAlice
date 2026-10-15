@@ -4,7 +4,6 @@
 
 ### Навык Яндекс Алисы с Google Gemini и поиском Serper
 
-**🤖 Подружили Алису с нейросетью и поиском. Теперь пусть думают вместе.**
 
 [Исходный код](https://github.com/gkuhtov/GeraKWonderAlice) · [Документация экосистемы](https://github.com/gkuhtov/GeraKProtocol)
 
