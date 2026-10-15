@@ -7,7 +7,34 @@ const MODELS_TO_TRY = [
 const MAX_HISTORY_MESSAGES = 6;
 const MAX_HISTORY_MESSAGE_CHARS = 800;
 const MAX_COMMAND_CHARS = 1200;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX_REQUESTS = 20;
 const TOTAL_BUDGET_MS = 4300;
+
+const requestWindows = new Map();
+
+function isRateLimited(req) {
+  const forwarded = req.headers?.["x-forwarded-for"];
+  const rawIp = req.headers?.["x-real-ip"] || (Array.isArray(forwarded) ? forwarded[0] : forwarded || "");
+  const ip = String(rawIp).split(",")[0].trim();
+  if (!ip) return false;
+
+  const now = Date.now();
+  const current = requestWindows.get(ip);
+  if (!current || now - current.startedAt >= RATE_LIMIT_WINDOW_MS) {
+    requestWindows.set(ip, { startedAt: now, count: 1 });
+  } else {
+    if (current.count >= RATE_LIMIT_MAX_REQUESTS) return true;
+    current.count += 1;
+  }
+
+  if (requestWindows.size > 2000) {
+    for (const [key, value] of requestWindows) {
+      if (now - value.startedAt >= RATE_LIMIT_WINDOW_MS) requestWindows.delete(key);
+    }
+  }
+  return false;
+}
 
 const SYSTEM_PROMPT = [
   "Ты — дерзкий, прошаренный, ровный пацанчик с района, который застрял в колонке.",
@@ -187,6 +214,10 @@ export default async function handler(req, res) {
 
   if (req.method !== "POST") {
     return sendJson(res, 405, { error: "Method not allowed" });
+  }
+
+  if (isRateLimited(req)) {
+    return sendJson(res, 429, { error: "Слишком много запросов. Попробуйте позже." });
   }
 
   const startTime = Date.now();
